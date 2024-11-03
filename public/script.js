@@ -27,17 +27,7 @@ async function searchMovie() {
 
         mainMovie.innerHTML = createMovieCard(data.movie, true);
         
-        if (data.recommendations.length === 0) {
-            recommendationsList.innerHTML = `
-                <div class="no-recommendations">
-                    <p>No similar movies found. Try another movie!</p>
-                </div>
-            `;
-        } else {
-            recommendationsList.innerHTML = data.recommendations
-                .map(movie => createMovieCard(movie))
-                .join('');
-        }
+        displayRecommendations(data.recommendations);
         
         movieDetails.classList.remove('hidden');
     } catch (err) {
@@ -98,9 +88,107 @@ function showError(message) {
     error.classList.remove('hidden');
 }
 
+function displayRecommendations(recommendations) {
+    const recommendationsList = document.getElementById('recommendationsList');
+    recommendationsList.innerHTML = '';
+
+    if (recommendations.length === 0) {
+        recommendationsList.innerHTML = '<p>No similar movies found.</p>';
+        return;
+    }
+
+    recommendations.forEach(movie => {
+        recommendationsList.innerHTML += createMovieCard(movie);
+    });
+}
+
 // Add event listener for Enter key
 document.getElementById('movieInput').addEventListener('keypress', (event) => {
     if (event.key === 'Enter') {
         searchMovie();
+    }
+});
+
+// Add event listener for input changes
+document.getElementById('movieInput').addEventListener('input', debounce(function(e) {
+    const searchTerm = e.target.value.trim();
+    if (searchTerm.length >= 3) { // Only search if 3 or more characters
+        searchMoviePreview(searchTerm);
+    } else {
+        hidePreviewResults();
+    }
+}, 300)); // Debounce by 300ms to prevent too many API calls
+
+// Debounce function to limit API calls
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+async function searchMoviePreview(searchTerm) {
+    try {
+        const response = await fetch(`/search-preview?query=${encodeURIComponent(searchTerm)}`);
+        const data = await response.json();
+        displayPreviewResults(data.results.slice(0, 5)); // Show only first 5 results
+    } catch (error) {
+        console.error('Error fetching preview results:', error);
+    }
+}
+
+function displayPreviewResults(results) {
+    const previewContainer = document.getElementById('searchPreview') || createPreviewContainer();
+    previewContainer.innerHTML = '';
+    
+    if (results.length === 0) {
+        previewContainer.innerHTML = '<div class="preview-item">No movies found</div>';
+        return;
+    }
+
+    results.forEach(movie => {
+        const item = document.createElement('div');
+        item.className = 'preview-item';
+        item.innerHTML = `
+            <img src="${movie.poster_path ? `https://image.tmdb.org/t/p/w92${movie.poster_path}` : 'placeholder.jpg'}" 
+                 alt="${movie.title}" class="preview-poster">
+            <div class="preview-info">
+                <div class="preview-title">${movie.title}</div>
+                <div class="preview-year">${movie.release_date ? `(${movie.release_date.split('-')[0]})` : ''}</div>
+            </div>
+        `;
+        item.addEventListener('click', () => {
+            document.getElementById('movieInput').value = movie.title;
+            hidePreviewResults();
+            searchMovie(movie.id); // Search with specific movie ID
+        });
+        previewContainer.appendChild(item);
+    });
+}
+
+function createPreviewContainer() {
+    const container = document.createElement('div');
+    container.id = 'searchPreview';
+    container.className = 'search-preview';
+    document.querySelector('.search-box').appendChild(container);
+    return container;
+}
+
+function hidePreviewResults() {
+    const previewContainer = document.getElementById('searchPreview');
+    if (previewContainer) {
+        previewContainer.innerHTML = '';
+    }
+}
+
+// Add click outside listener to close preview
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.search-box')) {
+        hidePreviewResults();
     }
 });
